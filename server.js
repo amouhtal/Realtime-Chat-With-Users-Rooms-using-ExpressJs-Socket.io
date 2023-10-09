@@ -4,7 +4,12 @@ const express = require("express");
 const formatMessage = require("./utils/messages");
 // create an instance of express
 const app = express();
-const { userJoin, getCurrentUser } = require("./utils/users");
+const {
+    userJoin,
+    getCurrentUser,
+    userLeave,
+    getRoomUsers,
+} = require("./utils/users");
 
 // import http package to create a server
 const http = require("http");
@@ -25,17 +30,22 @@ app.use(express.static(path.join(__dirname, "public")));
 const botName = "ChatCord Bot";
 io.on("connection", (socket) => {
     console.log("New WS Connection...");
-    socket.join(user.room);
     socket.on("joinRoom", ({ username, room }) => {
         const user = userJoin(socket.id, username, room);
-        socket.join("");
+        socket.join(user.room);
         socket.emit("message", formatMessage(botName, "Welcome to ChatCord!"));
 
         // Broadcast when a user connects
-        socket.broadcast.to(user.room).emit(
-            "message",
-            formatMessage(botName, "A user has joined the chat")
-        );
+        socket.broadcast
+            .to(user.room)
+            .emit(
+                "message",
+                formatMessage(botName, `${user.username} has joined the chat`)
+            );
+        io.to(user.room).emit("roomUsers", {
+            room: user.room,
+            users: getRoomUsers(user.room),
+        });
     });
 
     socket.on("chatMessage", (msg) => {
@@ -43,7 +53,17 @@ io.on("connection", (socket) => {
     });
     // Run when client disconnects
     socket.on("disconnect", () => {
-        io.emit("message", formatMessage(botName,`${user.username} has left the chat`));
+        const user = userLeave(socket.id);
+        if (user) {
+            io.to(user.room).emit(
+                "message",
+                formatMessage(botName, `${user.username} has left the chat`)
+            );
+        }
+        io.to(user.room).emit("roomUsers", {
+            room: user.room,
+            users: getRoomUsers(user.room),
+        });
     });
 });
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
